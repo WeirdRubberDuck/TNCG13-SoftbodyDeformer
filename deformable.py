@@ -12,7 +12,7 @@ class Deformable:
     # Time step for physics computations
     dt = 0.0
     
-    def __init__(self, positions, magicNr):
+    def __init__(self, positions = []):
         self.pos_x0 = positions		# rest position (MPoint)
         self.pos_x  = positions 	# current positions (MPoint)  
     #END
@@ -28,7 +28,8 @@ class Deformable:
     def applyForces(self):    
         # Apply a force to each position in x
         for pos in self.pos_x:
-            print('x: ' + str(pos.x) + ' y: ' + str(pos.y) + ' z: ' + str(pos.z)) 
+            #print('x: ' + str(pos.x) + ' y: ' + str(pos.y) + ' z: ' + str(pos.z)) 
+            pos.y = pos.y - 2.0
         #END FOR
     #END
 #END
