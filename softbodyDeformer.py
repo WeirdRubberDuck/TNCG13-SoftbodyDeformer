@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # softbodyDeformer.py
 
 # Import dependencies
@@ -29,7 +30,6 @@ else:
     kOutputGeom = OpenMayaMPx.cvar.MPxGeometryFilter_outputGeom
     kEnvelope = OpenMayaMPx.cvar.MPxGeometryFilter_envelope
 
-
 ##########################################################
 # Plug-in 
 ##########################################################
@@ -38,7 +38,6 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
     # Static variable(s) which will later be replaced by the node's attribute(s).
     time = OpenMaya.MObject()
     deformableObject = deformable.Deformable()
-    initialized = False
 
     def __init__(self):
         ''' Constructor. '''
@@ -63,69 +62,44 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
         dObj = SoftbodyDeformerNode.deformableObject
 
-        print 'time = ' + str(tempTime.value())  # OBS!  How do we update this value??? Make a callback function?
+        #print 'time = ' + str(tempTime.value())  # OBS!  How do we update this value??? Make a callback function?
         
         # Get the input mesh from the datablock using our getDeformerInputGeometry() helper function.     
         inputGeometryObject = self.getDeformerInputGeometry(pDataBlock, pGeometryIndex)     # OBS! Perhaps use this to get the rest positions instead?
 
+        print "TempTime = " + str(tempTime.value())
+        frame = int(tempTime.asUnits(OpenMaya.MTime.kFilm))
+        print 'Frame = ' + str(frame)
+
         # IF not initialized: Initialize rest shape
-        if(not SoftbodyDeformerNode.initialized) :
+        # if frame == 1: # Initialize on first frame
 
-            print 'Initializing deformable object...'
+        print 'Initializing deformable object...'
 
-            # Save original positions of all points into another object
-            restPositions = []
-            
-            while not pGeometryIterator.isDone():
-
-                # Add the position to the list of rest positions
-                pos = pGeometryIterator.position() 
-                restPositions.append(pos)
-
-                print ('old y: ' + str(pos.y))
-                
-                # Jump to the next vertex.
-                pGeometryIterator.next()
-            
-            #END WHILE
-            
-            dObj = deformable.Deformable(restPositions)
-
-            SoftbodyDeformerNode.initialized = True
+        # Save original positions of all points into another object
+        # Obtain the list of positions for each vertex in the mesh.
+        restPositions = OpenMaya.MPointArray()
+        meshFn = OpenMaya.MFnMesh( inputGeometryObject )
+        meshFn.getPoints( restPositions, OpenMaya.MSpace.kTransform ) # OBS: This can be done using pGeomertyIterator instead
+       
+        dObj = deformable.Deformable(restPositions)
 
         # ELSE: Update shape
         #else:
-   
+        #for i in range(0,20):
+        # Set timestep
+        frame = frame * 10
+        dt = float(frame/24) # 24fps
+        dObj.setTimeStep(dt)
+        for i in range(1,int(tempTime.value())):
             # Apply forces
-            
             dObj.applyForces()
             newPositions = dObj.getPositions()  # OBS! There is a class called MPointArray, perhaps use that? For rest positions as well.
-
-            # Update the object's positions     
-            pGeometryIterator.reset()   # OBS! Temporary fix to be able to loop through the points again.  
-            while not pGeometryIterator.isDone():
-
-                print 'inside while'
-                idx = pGeometryIterator.index()
-                
-                # TEST: Print old pos
-                pos = pGeometryIterator.position() 
-                print ('old y: ' + str(pos.y))
-
-                # Set the new position
-                newPos = newPositions[idx]
-                # print type(newPos) # maya.OpenMaya.MPoint
-                pGeometryIterator.setPosition(newPos) # OBS!! The position is set sucessfully, but does not produce visual result in Maya...
-                
-                # TEST: Print old pos (works!)
-                pos = pGeometryIterator.position() 
-                print ('new y: ' + str(pos.y))
-                
-                # Jump to the next vertex.
-                pGeometryIterator.next()
+            #print "newPos = (" + str(newPositions[0].x) + ", " + str(newPositions[0].y) + ", " + str(newPositions[0].z) + ")"
             
-            #END WHILE
-            
+            # Update the object's positions 
+            pGeometryIterator.setAllPositions(newPositions)
+        
             # Update positions using forces and shape matching
 
         #END IF
@@ -174,7 +148,11 @@ def nodeInitializer():
 
     SoftbodyDeformerNode.time = unitAttributeFn.create('time', 't', OpenMaya.MFnUnitAttribute.kTime, 0.0)
     unitAttributeFn.setDefault(OpenMayaAnim.MAnimControl.currentTime())
-    unitAttributeFn.setChannelBox(True)
+    unitAttributeFn.setStorable( True )
+    unitAttributeFn.setWritable( True )
+    unitAttributeFn.setKeyable( True )
+    unitAttributeFn.setReadable( False )
+    unitAttributeFn.setChannelBox( True )
     SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.time)
 
     ''' The input geometry node attribute is already declared in OpenMayaMPx.cvar.MPxGeometryFilter_inputGeom '''
