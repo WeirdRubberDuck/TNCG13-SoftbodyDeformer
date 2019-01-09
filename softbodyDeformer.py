@@ -6,8 +6,7 @@ import sys
 import maya.OpenMayaMPx as OpenMayaMPx
 import maya.OpenMaya as OpenMaya
 import maya.OpenMayaAnim as OpenMayaAnim
-
-#sys.path.append( 'H:/TNCG13' );
+import numpy as np
 
 import deformable  # OBS! Modules are not reloaded unless MAYA is restarted.
 
@@ -72,7 +71,10 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
             meshFn = OpenMaya.MFnMesh( inputGeometryObject )
             meshFn.getPoints( restPositions, OpenMaya.MSpace.kTransform ) # OBS: This can be done using pGeomertyIterator instead
         
-            self.dObject = deformable.Deformable(restPositions)
+            # Init velocity for the points
+            restVelocities = OpenMaya.MPointArray(restPositions.length(), OpenMaya.MPoint()) # value = 0.0
+
+            self.dObject = deformable.Deformable(restPositions, restVelocities)
             self.prevTime = currentTime
             self.initialised = True
 
@@ -81,7 +83,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
         # ELSE: Update shape
         elif (self.prevTime != currentTime):
             
-            print 'Updating object positions...'
+            #print 'Updating object positions...'
 
             # Set timestep
             diffTime = currentTime - self.prevTime

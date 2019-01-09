@@ -7,17 +7,16 @@ class Deformable:
     # Stiffness, mass, etc.
     mass = 1.0
     gravity = -9.82
-
-    # Time step for physics computations
-    dt = 0.0
     
-    def __init__(self, positions = OpenMaya.MPointArray()):
+    def __init__(self, positions = OpenMaya.MPointArray(), velocities = OpenMaya.MPointArray()):
+        self.dt = 0.01              # time step for physics computations
         self.pos_x0 = positions		# rest position (MPoint)
         self.pos_x  = positions 	# current positions (MPoint)  
+        self.v = velocities         # current velocisites (MPoint)
     #END
 
     def setTimeStep(self, timeStep):
-        dt = timeStep
+        self.dt = timeStep
     #END
 
     def getPositions(self):
@@ -30,7 +29,22 @@ class Deformable:
         for i in range(self.pos_x.length()):
             pos = self.pos_x[i]
             #print('x: ' + str(pos.x) + ' y: ' + str(pos.y) + ' z: ' + str(pos.z)) 
-            pos.y = pos.y - 2.0
+            pos.y = pos.y - 2.0 * self.dt
         #END FOR
+    #END
+
+    #def deform(self):
+        # Deform object using shape matching
+        
+        # STEP 1: COMPUTE GOAL POSITIONS
+
+        # compute optimal translation vector
+
+        # compute optimal rotation matrix
+        # Apq
+        # Singular value decomposition?
+
+        # STEP 2: INTEGRATION
+
     #END
 #END
