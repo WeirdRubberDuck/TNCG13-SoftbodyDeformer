@@ -8,7 +8,8 @@ import maya.OpenMaya as OpenMaya
 import maya.OpenMayaAnim as OpenMayaAnim
 import numpy as np
 
-import deformable  # OBS! Modules are not reloaded unless MAYA is restarted.
+#import deformable  # OBS! Modules are not reloaded unless MAYA is restarted.
+from deformable import *
 
 # Plug-in information:
 kPluginNodeName = 'softbodyDeformer'     # The name of the node.
@@ -42,7 +43,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
         # (!) Make sure you call the base class's constructor.
         OpenMayaMPx.MPxDeformerNode.__init__(self)
 
-        self.dObject = deformable.Deformable() # The class handling the computation of the deformation
+        self.dObject = Deformable() # The class handling the computation of the deformation
         self.initialised = False 
         self.prevTime = OpenMaya.MTime()
     #END
@@ -74,7 +75,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
             # Init velocity for the points
             restVelocities = OpenMaya.MPointArray(restPositions.length(), OpenMaya.MPoint()) # value = 0.0
 
-            self.dObject = deformable.Deformable(restPositions, restVelocities)
+            self.dObject = Deformable(restPositions, restVelocities)
             self.prevTime = currentTime
             self.initialised = True
 
@@ -103,6 +104,8 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
             for i in range(0, abs(nrUpdates)):
                 # Apply forces
                 self.dObject.applyForces()
+                self.dObject.deform()
+
                 newPositions = self.dObject.getPositions()  # OBS! There is a class called MPointArray, perhaps use that? For rest positions as well.
                 
                 # Update the object's positions 
