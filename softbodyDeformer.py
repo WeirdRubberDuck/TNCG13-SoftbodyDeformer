@@ -63,58 +63,59 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
         # IF not initialized: Initialize rest shape
         if (not self.initialised): # Initialize on first frame
-
             print 'Initialising deformable object...'
 
             # Save original positions of all points into another object
             # Obtain the list of positions for each vertex in the mesh.
             restPositions = OpenMaya.MPointArray()
-            meshFn = OpenMaya.MFnMesh( inputGeometryObject )
-            meshFn.getPoints( restPositions, OpenMaya.MSpace.kTransform ) # OBS: This can be done using pGeomertyIterator instead
-        
+
+            pGeometryIterator.allPositions(restPositions)
+
+            # Convert to world coordinates
+            for i in range(restPositions.length()):
+                restPositions.set(restPositions[i] * pLocalToWorldMatrix, i)
+            #END FOR
+
             # Init velocity for the points
             restVelocities = OpenMaya.MPointArray(restPositions.length(), OpenMaya.MPoint()) # value = 0.0
 
             self.dObject = Deformable(restPositions, restVelocities)
+            self.dObject.precomputeDeformVariables()
             self.prevTime = currentTime
             self.initialised = True
 
-            print 'prevTime: ' + str(self.prevTime.value())
-
         # ELSE: Update shape
         elif (self.prevTime != currentTime):
-            
-            #print 'Updating object positions...'
-
             # Set timestep
             diffTime = currentTime - self.prevTime
             
             nrUpdates = int(diffTime.value())
-            dt = (1/24.0) * (-1 if nrUpdates < 0 else 1) # 24 fps
+            nrUpdatesPerTimestep = 2
+            dt = (1/24.0)/nrUpdatesPerTimestep * (-1 if nrUpdates < 0 else 1) # 24 fps
             self.dObject.setTimeStep(dt)
 
-            #print 'dt: ' + str(dt)
-            #print 'prevTime: ' + str(self.prevTime.value())
-            #print 'currentTime: ' + str(currentTime.value())
-            #print 'nrUpdates: ' + str(nrUpdates)
-
-            # update previous time (to use for next time step)
+            # Update previous time (to use for next time step)
             self.prevTime = currentTime
 
-            for i in range(0, abs(nrUpdates)):
+            for i in range(0, abs(nrUpdates*nrUpdatesPerTimestep)):
                 # Apply forces
                 self.dObject.applyForces()
-                self.dObject.deform()
 
-                newPositions = self.dObject.getPositions()  # OBS! There is a class called MPointArray, perhaps use that? For rest positions as well.
-                
-                # Update the object's positions 
-                pGeometryIterator.setAllPositions(newPositions)
-            
                 # Update positions using forces and shape matching
+                self.dObject.deform()
+            #END FOR
 
+            # Update output positions
+            newPositions = self.dObject.getPositions() 
+                
+            # Convert to model coordinates
+            for i in range(newPositions.length()):
+                newPositions.set(newPositions[i] * pLocalToWorldMatrix.inverse(), i)
+            #END FOR
+
+            # Update the object's positions 
+            pGeometryIterator.setAllPositions(newPositions)
         #END IF
-        
     #END
     
     def getDeformerInputGeometry(self, pDataBlock, pGeometryIndex):
@@ -215,12 +216,39 @@ def uninitializePlugin( mobject ):
 import maya.cmds as cmds
 cmds.loadPlugin( 'H:\TNCG13-SoftbodyDeformer\softbodyDeformer.py' )
 cmds.polyCube()
+cmds.move(0, 1, 0)
 cmds.deformer( type='softbodyDeformer' )
 
 # OBS! To avoid Maya crash when reloading plugin:
 # Delete any created objects connected with the deformer and 
 # run the following MEL command: 
 
- file -new
+file -new
 
+# To run from MEL instead of Python
+loadPlugin("H:/TNCG13-SoftbodyDeformer/softbodyDeformer.py");
+
+// Create a plane
+polyPlane -n myPlane -sx 1 -sy 1 -h 10 -w 10;
+//select -r myPlane ;
+move -r 0 0.0 0;
+
+polySphere -n mySphere -r 1 -sx 20 -sy 20 -ax 0 1 0 -cuv 2 -ch 1;
+
+move -r 0 2.0 0;
+
+select -r mySphere;
+CreatePassiveRigidBody;
+Gravity;
+
+select -r mySphere;
+deformer -type softbodyDeformer;
+
+// Connect the dynamics attributes to the deformer node
+// Gravity Direction
+//connectAttr -f gravityField1.direction softbodyDeformer.GravityDirection;
+// Gravity Magnitude
+//connectAttr -f gravityField1.magnitude softbodyDeformer.GravityMagnitude;
+// Time
+//connectAttr -f time1.outTime softbodyDeformer.CurrentTime;
 '''	
