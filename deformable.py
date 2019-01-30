@@ -175,7 +175,7 @@ class Deformable:
         # S = linalg.sqrtm(np.transpose(Apq)*Apq)
         # R = np.dot(Apq, np.linalg.inv(S))
 
-        # ALT 3: Singular value decomposition (SVD) # NOT THE ONE
+        # ALT 3: Singular value decomposition (SVD) # THIS IS THE ONE!
         U, D, V = np.linalg.svd(Apq) # V is already transposed
         R = np.dot(V, U)
 
@@ -187,6 +187,7 @@ class Deformable:
         # END IF
 
         # RIGID BODY DEFORMATION
+        '''
         # compute goal positions
         goalPositions = np.empty( (0, 3) )
         for i in range(X0.shape[0]):
@@ -195,6 +196,7 @@ class Deformable:
             g = np.dot(R, xDiff.T).T + X_cm
             goalPositions = np.append(goalPositions, g, axis=0)
         # END FOR
+        '''
 
         # LINEAR DEFORMATION
         A = np.dot(Apq, Aqq)
@@ -203,11 +205,52 @@ class Deformable:
         determinant = linalg.det(A) if linalg.det(A) > 0.001 else 0.001
         A = A / pow(determinant, 1/3)
 
-        # Recompute goal positions
+        # Compute goal positions
         T = self.beta * A + (1 - self.beta) * R
-        goalPositions = np.empty( (0, 3) )
+        goalPositions = np.empty((0, 3))
         for i in range(X0.shape[0]):
-            xDiff = np.array([(X0[i] - X0_cm), ]) # need to be a 2D-array to be multiplied with R
+            xDiff = np.array([(X0[i] - X0_cm), ]) # need to be a 2D-array to be multiplied with T
+
+            g = np.dot(T, xDiff.T).T + X_cm
+            goalPositions = np.append(goalPositions, g, axis=0)
+        # END FOR
+
+        # QUADRATIC DEFORMATION
+        # Compute qTilde
+        qTilde = np.zeros((self.q.shape[0], 9))
+        for i in range(self.q.shape[0]):
+            qx = self.q[i][0]
+            qy = self.q[i][1]
+            qz = self.q[i][2]
+
+            qTilde[i] = np.array([qx, qy, qz, qx*qx, qy*qy, qz*qz, qx*qy, qy*qz, qz*qx])
+        # END FOR
+
+        # Compute ATilde
+        ApqTilde = np.zeros((3, 9))
+        AqqTilde = np.zeros((9, 9))
+
+        for i in range(q.shape[0]):
+            # make sure that we have matrices and not 1D-arrays
+            pi = np.array([p[i],])
+            qi = np.array([qTilde[i],])
+
+            ApqTilde = ApqTilde + MASS * np.dot(pi.T, qi) # Matrix multiplication
+            AqqTilde = AqqTilde + MASS * np.dot(qi.T, qi) # Matrix multiplication
+        # END FOR
+        AqqTilde = np.linalg.inv(AqqTilde)  # No inverse (This is the problem yo!)
+
+        ATilde = np.dot(ApqTilde, AqqTilde)
+
+        # Compute RTilde = [R 0 0]
+        zero = np.zeros((3, 6))
+        RTilde = np.concatenate((R, zero), axis=1)
+
+        # Compute goal positions
+        T = self.beta * ATilde + (1 - self.beta) * RTilde
+        goalPositions = np.empty( (0, 3) )
+        for i in range(qTilde.shape[0]):
+            xDiff = np.array([qTilde[i], ])
 
             g = np.dot(T, xDiff.T).T + X_cm
             goalPositions = np.append(goalPositions, g, axis=0)
