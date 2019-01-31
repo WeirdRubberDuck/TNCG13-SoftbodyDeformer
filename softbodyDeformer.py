@@ -62,7 +62,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
         inputGeometryObject = self.getDeformerInputGeometry(pDataBlock, pGeometryIndex)     # OBS! Perhaps use this to get the rest positions instead?
 
         # IF not initialized: Initialize rest shape
-        if (not self.initialised): # Initialize on first frame
+        if (not self.initialised): 
             print 'Initialising deformable object...'
 
             # Save original positions of all points into another object
@@ -76,16 +76,24 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
                 restPositions.set(restPositions[i] * pLocalToWorldMatrix, i)
             #END FOR
 
-            # Init velocity for the points
+            # Initialise velocity for the points
             restVelocities = OpenMaya.MPointArray(restPositions.length(), OpenMaya.MPoint()) # value = 0.0
 
+            # Initialise deformable object
             self.dObject = Deformable(restPositions, restVelocities)
             self.dObject.precomputeDeformVariables()
+
             self.prevTime = currentTime
             self.initialised = True
 
         # ELSE: Update shape
         elif (self.prevTime != currentTime):
+            
+            # Set variables used for physics simulation
+            self.dObject.setCollisionElasticity(pDataBlock.inputValue(SoftbodyDeformerNode.elasticity).asDouble())
+            self.dObject.setCollisionFriction(pDataBlock.inputValue(SoftbodyDeformerNode.collisionFriction).asDouble())
+            self.dObject.setBeta(pDataBlock.inputValue(SoftbodyDeformerNode.beta).asDouble())
+
             # Set timestep
             diffTime = currentTime - self.prevTime
             
@@ -167,6 +175,27 @@ def nodeInitializer():
     unitAttributeFn.setChannelBox( True )
     SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.time)
 
+    # Collision elasticity
+    SoftbodyDeformerNode.elasticity = numericAttributeFn.create('elasticity', 'e', OpenMaya.MFnNumericData.kDouble, 0.5)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(1.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.elasticity)
+
+    # TODO: comment
+    SoftbodyDeformerNode.collisionFriction = numericAttributeFn.create('collisionFriction', 'cf', OpenMaya.MFnNumericData.kDouble, 0.5)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(1.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.collisionFriction)
+
+    # TODO: comment
+    SoftbodyDeformerNode.beta = numericAttributeFn.create('beta', 'beta', OpenMaya.MFnNumericData.kDouble, 0.5)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(1.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.beta)
+
     ''' The input geometry node attribute is already declared in OpenMayaMPx.cvar.MPxGeometryFilter_inputGeom '''
 
     #==================================
@@ -183,6 +212,9 @@ def nodeInitializer():
     print dir(OpenMayaMPx.cvar)
 
     SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.time, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.elasticity, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.collisionFriction, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.beta, kOutputGeom)
 #END
 
 def initializePlugin( mobject ):
@@ -243,6 +275,8 @@ Gravity;
 
 select -r mySphere;
 deformer -type softbodyDeformer;
+
+connectAttr -f time1.outTime softbodyDeformer1.time;
 
 // Connect the dynamics attributes to the deformer node
 // Gravity Direction

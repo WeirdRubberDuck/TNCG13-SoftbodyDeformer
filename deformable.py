@@ -91,6 +91,14 @@ class Deformable:
         self.elasticity = elasticity
     #END
 
+    def setCollisionFriction(self, friction):
+        self.friction = friction
+    #END
+
+    def setBeta(self, beta):
+        self.beta = beta
+    #END
+
     def setTimeStep(self, timeStep):
         self.dt = timeStep
     #END
@@ -118,6 +126,8 @@ class Deformable:
         # Access global variables
         global GRAVITY, MASS
         nrPos = self.pos_x.length()
+
+        # TODO: Make sure that forces works correctly. (DET BALLAR UR!!)
 
         for i in range(nrPos):
             pos = self.pos_x[i]
