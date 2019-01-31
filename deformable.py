@@ -47,8 +47,11 @@ class Deformable:
         self.X0_cm = None
         self.q = None
         self.Aqq = None
+        self.qTilde = None
+        self.AqqTilde = None
     #END
 
+    ''' Precomputation of variables based on rest poisitions. Needed for deformation '''
     def precomputeDeformVariables(self):
         global MASS
 
@@ -56,18 +59,32 @@ class Deformable:
         self.X0 = convertMayaToNumpyArray(self.pos_x0)
         self.X0_cm = np.sum(self.X0, axis=0) / self.X0.shape[0]
 
-        # compute relative locations q
+        # Compute relative locations q
         self.q = self.X0 - self.X0_cm
 
-        # Aqq
-        self.Aqq = np.zeros((3, 3))
+        # Compute Aqq, AqqTilde and qTilde
+        self.Aqq = np.zeros((3, 3)) 
+        self.AqqTilde = np.zeros((9, 9))
 
+        self.qTilde = np.zeros((self.q.shape[0], 9))
         for i in range(self.q.shape[0]):
+            # Compute Aqq
             qi = np.array([self.q[i],]) # make sure that we have matrices and not 1D-arrays
-            self.Aqq = self.Aqq + MASS * np.dot(qi.T, qi) # Matrix multiplication
+            self.Aqq = self.Aqq + MASS * np.dot(qi.T, qi) # matrix multiplication
+
+            # Compute AqqTilde and updated relative positions qTilde (used for quadratic deformation)
+            qx = self.q[i][0]
+            qy = self.q[i][1]
+            qz = self.q[i][2]
+            self.qTilde[i] = np.array([qx, qy, qz, qx*qx, qy*qy, qz*qz, qx*qy, qy*qz, qz*qx])
+
+            qiTilde = np.array([self.qTilde[i],])
+            self.AqqTilde = self.AqqTilde + MASS * np.dot(qiTilde.T, qiTilde) # matrix multiplication
         # END FOR
 
+        # Inverse deformation matrices
         self.Aqq = np.linalg.inv(self.Aqq)
+        self.AqqTilde = np.linalg.inv(self.AqqTilde)   
     #END
 
     def setCollisionElasticity(self, elasticity):
@@ -82,53 +99,65 @@ class Deformable:
         return self.pos_x
     #END
 
-    def applyForces(self):
-        # Apply a force to each position in x
-        # access global variables
-        global GRAVITY, MASS
+    ''' 
+    Compute goal positions based on relative rest positions q, 
+    transformation matrix T and updated center of mass X_cm 
+    '''
+    def computeGoalPositions(self, q, T, X_cm):
+        goalPositions = np.empty( (0, 3) )
+        for i in range(q.shape[0]):
+            xDiff = np.array([q[i], ]) # 2D matrix
+            g = np.dot(T, xDiff.T).T + X_cm
+            goalPositions = np.append(goalPositions, g, axis=0)
+        # END FOR
+        return goalPositions
+    #END
 
+    ''' Apply a force to each position in x '''
+    def applyForces(self):
+        # Access global variables
+        global GRAVITY, MASS
         nrPos = self.pos_x.length()
 
         for i in range(nrPos):
             pos = self.pos_x[i]
             v = self.v[i]
 
-            # compute external forces
+            # Compute external forces
             # gravity
             f = GRAVITY * MASS
             F = np.array([0.0, f, 0.0]) # F = [0, -0.982, 0]
 
-            # impulse and friction for collision with ground
+            # Impulse and friction for collision with ground
             if pos.y <= 0:
-                # floor/ground is static
+                # Floor/ground is static
                 groundNormal = np.array([0.0, 1.0, 0.0])
                 vDiff = v - np.zeros(3) # difference in velocity between the two objects
 
-                # composant in normal direction
+                # Composant in normal direction
                 vDiff_par = groundNormal * np.dot(groundNormal, vDiff) # dot product then vector times scalar
-                # orthogonal composant
+                # Orthogonal composant
                 vDiff_orth = vDiff - vDiff_par 
 
-                # compute impulse and friction
+                # Compute impulse and friction
                 collisionImpulse = -(self.elasticity + 1) * vDiff_par * MASS
                 friction = -self.friction * vDiff_orth * MASS
 
                 F = F + (collisionImpulse + friction) / self.dt
-                # move object above ground level
+                # Move object above ground level
                 pos.y = 0.01 
             #END IF
 
-            # update velocities
+            # Update velocities
             self.v[i] = self.v[i] + (F / MASS) * self.dt
 
-            # update positions
+            # Update positions
             newX = pos.x + self.v[i, 0] * self.dt
             newY = pos.y + self.v[i, 1] * self.dt
             newZ = pos.z + self.v[i, 2] * self.dt
 
-            if newY <= 0:
-                newY = 0.01 # move object above ground level
-            #END IF
+            # Move object above ground level
+            if newY <= 0: newY = 0.01
 
             self.pos_x.set(i, newX, newY, newZ)
         #END FOR
@@ -143,39 +172,29 @@ class Deformable:
         X0_cm = self.X0_cm
         q = self.q
         Aqq = self.Aqq
+        qTilde = self.qTilde
+        AqqTilde = self.AqqTilde
 
         # PREPARATIONS
-        # convert to array
+        # Convert to array
         X = convertMayaToNumpyArray(self.pos_x)
 
-        # compute optimal translation vector (just the center of mass)
-        X_cm = np.sum(X, axis=0) / X.shape[0]   # All have the same mass => No need to include it in the calculation
+        # Compute optimal translation vector (just the center of mass)
+        X_cm = np.sum(X, axis=0) / X.shape[0]   # all have the same mass => No need to include it in the calculation
 
-        # compute relative locations p
+        # Compute relative locations p
         p = X - X_cm
 
-        # compute optimal rotation matrix Apq
+        # Compute optimal rotation matrix Apq
         Apq = np.zeros((3, 3))
-
         for i in range(q.shape[0]):
-            # make sure that we have matrices and not 1D-arrays
+            # Make sure that we have matrices and not 1D-arrays
             pi = np.array([p[i],])
             qi = np.array([q[i],])
-
-            Apq = Apq + MASS * np.dot(pi.T, qi) # Matrix multiplication
+            Apq = Apq + MASS * np.dot(pi.T, qi) # matrix multiplication
         # END FOR
 
-        # Find rotational part in Apq using polar decomposition
-
-        # ALT 0: Polar decomposition
-        # ! R = U, rotation (with possible reflection); S = P, scaling/stretching (See wikipedia for explanation)
-        # R, S = linalg.polar(Apq)
-
-        # ALT 1: Compute S explicitly
-        # S = linalg.sqrtm(np.transpose(Apq)*Apq)
-        # R = np.dot(Apq, np.linalg.inv(S))
-
-        # ALT 3: Singular value decomposition (SVD) # THIS IS THE ONE!
+        # Find rotational part in Apq using singular value decomposition (SVD)
         U, D, V = np.linalg.svd(Apq) # V is already transposed
         R = np.dot(V, U)
 
@@ -187,17 +206,8 @@ class Deformable:
         # END IF
 
         # RIGID BODY DEFORMATION
-        '''
-        # compute goal positions
-        goalPositions = np.empty( (0, 3) )
-        for i in range(X0.shape[0]):
-            xDiff = np.array([(X0[i] - X0_cm), ]) # need to be a 2D-array to be multiplied with R
-
-            g = np.dot(R, xDiff.T).T + X_cm
-            goalPositions = np.append(goalPositions, g, axis=0)
-        # END FOR
-        '''
-
+        goalPositions = self.computeGoalPositions(q, R, X_cm)
+        
         # LINEAR DEFORMATION
         A = np.dot(Apq, Aqq)
 
@@ -207,40 +217,20 @@ class Deformable:
 
         # Compute goal positions
         T = self.beta * A + (1 - self.beta) * R
-        goalPositions = np.empty((0, 3))
-        for i in range(X0.shape[0]):
-            xDiff = np.array([(X0[i] - X0_cm), ]) # need to be a 2D-array to be multiplied with T
-
-            g = np.dot(T, xDiff.T).T + X_cm
-            goalPositions = np.append(goalPositions, g, axis=0)
-        # END FOR
+        goalPositions = self.computeGoalPositions(q, T, X_cm)
 
         # QUADRATIC DEFORMATION
-        # Compute qTilde
-        qTilde = np.zeros((self.q.shape[0], 9))
-        for i in range(self.q.shape[0]):
-            qx = self.q[i][0]
-            qy = self.q[i][1]
-            qz = self.q[i][2]
-
-            qTilde[i] = np.array([qx, qy, qz, qx*qx, qy*qy, qz*qz, qx*qy, qy*qz, qz*qx])
-        # END FOR
-
-        # Compute ATilde
         ApqTilde = np.zeros((3, 9))
-        AqqTilde = np.zeros((9, 9))
-
         for i in range(q.shape[0]):
             # make sure that we have matrices and not 1D-arrays
             pi = np.array([p[i],])
             qi = np.array([qTilde[i],])
-
             ApqTilde = ApqTilde + MASS * np.dot(pi.T, qi) # Matrix multiplication
-            AqqTilde = AqqTilde + MASS * np.dot(qi.T, qi) # Matrix multiplication
         # END FOR
-        AqqTilde = np.linalg.inv(AqqTilde)  # No inverse (This is the problem yo!)
 
         ATilde = np.dot(ApqTilde, AqqTilde)
+
+        # TODO: Preserve volume for linear part of ATilde
 
         # Compute RTilde = [R 0 0]
         zero = np.zeros((3, 6))
@@ -248,13 +238,7 @@ class Deformable:
 
         # Compute goal positions
         T = self.beta * ATilde + (1 - self.beta) * RTilde
-        goalPositions = np.empty( (0, 3) )
-        for i in range(qTilde.shape[0]):
-            xDiff = np.array([qTilde[i], ])
-
-            g = np.dot(T, xDiff.T).T + X_cm
-            goalPositions = np.append(goalPositions, g, axis=0)
-        # END FOR
+        goalPositions = self.computeGoalPositions(qTilde, T, X_cm)
 
         # INTEGRATION
         # Update current velocities and current position
@@ -262,7 +246,7 @@ class Deformable:
             self.v[i] = self.v[i] + Deformable.stiffness * ((goalPositions[i] - X[i])/self.dt)
             X[i] = X[i] + self.dt * Deformable.stiffness * ((goalPositions[i] - X[i])/self.dt)# self.v[i]
 
-            # convert positions back to MPoint
+            # Convert positions back to MPoint
             self.pos_x.set(i, X[i, 0], X[i, 1], X[i, 2])
         # END FOR
     #END
