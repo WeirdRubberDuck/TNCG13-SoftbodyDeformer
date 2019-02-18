@@ -62,7 +62,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
         inputGeometryObject = self.getDeformerInputGeometry(pDataBlock, pGeometryIndex)     # OBS! Perhaps use this to get the rest positions instead?
 
         # IF not initialized: Initialize rest shape
-        if (not self.initialised): 
+        if (frame == 1 or not self.initialised): 
             print 'Initialising deformable object...'
 
             # Save original positions of all points into another object
@@ -104,7 +104,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
             # Update previous time (to use for next time step)
             self.prevTime = currentTime
-
+            
             for i in range(0, abs(nrUpdates*nrUpdatesPerTimestep)):
                 # Apply forces
                 self.dObject.applyForces()
