@@ -83,8 +83,8 @@ class Deformable:
         # END FOR
 
         # Inverse deformation matrices
-        self.Aqq = np.linalg.inv(self.Aqq)
-        self.AqqTilde = np.linalg.inv(self.AqqTilde)   
+        self.Aqq = np.linalg.pinv(self.Aqq)
+        self.AqqTilde = np.linalg.pinv(self.AqqTilde)   # pinv to avoid floating points errors
     #END
 
     def setCollisionElasticity(self, elasticity):
