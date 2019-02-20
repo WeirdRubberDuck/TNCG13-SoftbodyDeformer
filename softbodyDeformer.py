@@ -95,8 +95,8 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
             self.dObject.setBeta(pDataBlock.inputValue(SoftbodyDeformerNode.beta).asDouble())
 
             # Set timestep
-            diffTime = currentTime - self.prevTime
-            
+            diffTime = currentTime - self.prevTime   
+                   
             nrUpdates = int(diffTime.value())
             nrUpdatesPerTimestep = 2
             dt = (1/24.0)/nrUpdatesPerTimestep * (-1 if nrUpdates < 0 else 1) # 24 fps
@@ -104,7 +104,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
             # Update previous time (to use for next time step)
             self.prevTime = currentTime
-            
+
             for i in range(0, abs(nrUpdates*nrUpdatesPerTimestep)):
                 # Apply forces
                 self.dObject.applyForces()
@@ -115,7 +115,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
             # Update output positions
             newPositions = self.dObject.getPositions() 
-                
+
             # Convert to model coordinates
             for i in range(newPositions.length()):
                 newPositions.set(newPositions[i] * pLocalToWorldMatrix.inverse(), i)
@@ -246,19 +246,24 @@ def uninitializePlugin( mobject ):
 # Copy the following lines and run them in Maya's Python Script Editor:
 
 import maya.cmds as cmds
-cmds.loadPlugin( 'H:\TNCG13-SoftbodyDeformer\softbodyDeformer.py' )
+cmds.loadPlugin( 'X:\TNCG13-SoftbodyDeformer\softbodyDeformer.py' )
 cmds.polyCube()
-cmds.move(0, 1, 0)
+cmds.move(0, 10, 0)
 cmds.deformer( type='softbodyDeformer' )
+cmds.connectAttr( 'time1.outTime', 'softbodyDeformer1.time' )
+'''
 
+'''
 # OBS! To avoid Maya crash when reloading plugin:
 # Delete any created objects connected with the deformer and 
 # run the following MEL command: 
 
 file -new
+'''
 
+'''
 # To run from MEL instead of Python
-loadPlugin("H:/TNCG13-SoftbodyDeformer/softbodyDeformer.py");
+loadPlugin("X:/TNCG13-SoftbodyDeformer/softbodyDeformer.py");
 
 // Create a plane
 polyPlane -n myPlane -sx 1 -sy 1 -h 10 -w 10;

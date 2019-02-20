@@ -9,6 +9,7 @@ Ctrl-K Ctrl-U = un-comments every line
 import maya.OpenMaya as OpenMaya
 import numpy as np
 import scipy as sp
+import copy
 from scipy import linalg
 
 def convertMayaToNumpyArray(inPositions):
@@ -104,7 +105,9 @@ class Deformable:
     #END
 
     def getPositions(self):
-        return self.pos_x
+        temp = OpenMaya.MPointArray() 
+        temp.copy(self.pos_x)
+        return temp
     #END
 
     ''' 
