@@ -104,7 +104,6 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
             # Set timestep
             diffTime = currentTime - self.prevTime   
-
             nrUpdates = int(diffTime.value())
             nrUpdatesPerTimestep = 3
             dt = (1/24.0)/nrUpdatesPerTimestep * (-1 if nrUpdates < 0 else 1) # 24 fps
