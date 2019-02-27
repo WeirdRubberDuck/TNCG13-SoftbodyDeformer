@@ -77,34 +77,42 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
             #END FOR
 
             # Initialise velocity for the points
-            restVelocities = OpenMaya.MPointArray(restPositions.length(), OpenMaya.MPoint()) # value = 0.0
+            initVelX = pDataBlock.inputValue(SoftbodyDeformerNode.initialVelocityX).asDouble()
+            initVelY = pDataBlock.inputValue(SoftbodyDeformerNode.initialVelocityY).asDouble()
+            initVelZ = pDataBlock.inputValue(SoftbodyDeformerNode.initialVelocityZ).asDouble()
+
+            restVelocities = OpenMaya.MPointArray(restPositions.length(), OpenMaya.MPoint(initVelX, initVelY, initVelZ))
+
+            # Set mass of particles
+            mass = pDataBlock.inputValue(SoftbodyDeformerNode.particleMass).asDouble()
 
             # Initialise deformable object
-            self.dObject = Deformable(restPositions, restVelocities)
+            self.dObject = Deformable(restPositions, restVelocities, mass)
             self.dObject.precomputeDeformVariables()
-
+            
             self.prevTime = currentTime
             self.initialised = True
 
         # ELSE: Update shape
         elif (self.prevTime != currentTime):
-            
             # Set variables used for physics simulation
-            self.dObject.setCollisionElasticity(pDataBlock.inputValue(SoftbodyDeformerNode.elasticity).asDouble())
+            self.dObject.setCollisionElasticity(pDataBlock.inputValue(SoftbodyDeformerNode.collisionElasticity).asDouble())
             self.dObject.setCollisionFriction(pDataBlock.inputValue(SoftbodyDeformerNode.collisionFriction).asDouble())
             self.dObject.setBeta(pDataBlock.inputValue(SoftbodyDeformerNode.beta).asDouble())
+            self.dObject.setStiffness(pDataBlock.inputValue(SoftbodyDeformerNode.stiffness).asDouble())
+            self.dObject.setJiggleness(pDataBlock.inputValue(SoftbodyDeformerNode.jiggleness).asDouble())
 
             # Set timestep
-            diffTime = currentTime - self.prevTime
-            
+            diffTime = currentTime - self.prevTime   
+
             nrUpdates = int(diffTime.value())
-            nrUpdatesPerTimestep = 2
+            nrUpdatesPerTimestep = 3
             dt = (1/24.0)/nrUpdatesPerTimestep * (-1 if nrUpdates < 0 else 1) # 24 fps
             self.dObject.setTimeStep(dt)
 
             # Update previous time (to use for next time step)
             self.prevTime = currentTime
-            
+
             for i in range(0, abs(nrUpdates*nrUpdatesPerTimestep)):
                 # Apply forces
                 self.dObject.applyForces()
@@ -115,7 +123,7 @@ class SoftbodyDeformerNode(OpenMayaMPx.MPxDeformerNode):
 
             # Update output positions
             newPositions = self.dObject.getPositions() 
-                
+
             # Convert to model coordinates
             for i in range(newPositions.length()):
                 newPositions.set(newPositions[i] * pLocalToWorldMatrix.inverse(), i)
@@ -175,12 +183,19 @@ def nodeInitializer():
     unitAttributeFn.setChannelBox( True )
     SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.time)
 
+    # TODO: comment
+    SoftbodyDeformerNode.particleMass = numericAttributeFn.create('particleMass', 'mass', OpenMaya.MFnNumericData.kDouble, 0.1)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(10.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.particleMass)
+
     # Collision elasticity
-    SoftbodyDeformerNode.elasticity = numericAttributeFn.create('elasticity', 'e', OpenMaya.MFnNumericData.kDouble, 0.5)
+    SoftbodyDeformerNode.collisionElasticity = numericAttributeFn.create('collisionElasticity', 'ce', OpenMaya.MFnNumericData.kDouble, 0.5)
     numericAttributeFn.setMin(0.0)
     numericAttributeFn.setMax(1.0)
     numericAttributeFn.setChannelBox( True )
-    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.elasticity)
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.collisionElasticity)
 
     # TODO: comment
     SoftbodyDeformerNode.collisionFriction = numericAttributeFn.create('collisionFriction', 'cf', OpenMaya.MFnNumericData.kDouble, 0.5)
@@ -195,7 +210,40 @@ def nodeInitializer():
     numericAttributeFn.setMax(1.0)
     numericAttributeFn.setChannelBox( True )
     SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.beta)
+    
+    # TODO: Comment
+    SoftbodyDeformerNode.stiffness = numericAttributeFn.create('stiffness', 'stiff', OpenMaya.MFnNumericData.kDouble, 0.5)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(1.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.stiffness)
 
+    # TODO: Comment
+    SoftbodyDeformerNode.jiggleness = numericAttributeFn.create('jiggleness', 'jiggle', OpenMaya.MFnNumericData.kDouble, 0.5)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(1.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.jiggleness)
+
+    # TODO: Comment
+    SoftbodyDeformerNode.initialVelocityX = numericAttributeFn.create('initialVelocityX', 'initVX', OpenMaya.MFnNumericData.kDouble, 0.0)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(10.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.initialVelocityX)
+
+    SoftbodyDeformerNode.initialVelocityY = numericAttributeFn.create('initialVelocityY', 'initVY', OpenMaya.MFnNumericData.kDouble, 0.0)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(10.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.initialVelocityY)
+
+    SoftbodyDeformerNode.initialVelocityZ = numericAttributeFn.create('initialVelocityZ', 'initVZ', OpenMaya.MFnNumericData.kDouble, 0.0)
+    numericAttributeFn.setMin(0.0)
+    numericAttributeFn.setMax(10.0)
+    numericAttributeFn.setChannelBox( True )
+    SoftbodyDeformerNode.addAttribute(SoftbodyDeformerNode.initialVelocityZ)
+    
     ''' The input geometry node attribute is already declared in OpenMayaMPx.cvar.MPxGeometryFilter_inputGeom '''
 
     #==================================
@@ -212,9 +260,15 @@ def nodeInitializer():
     print dir(OpenMayaMPx.cvar)
 
     SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.time, kOutputGeom)
-    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.elasticity, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.particleMass, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.collisionElasticity, kOutputGeom)
     SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.collisionFriction, kOutputGeom)
     SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.beta, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.stiffness, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.jiggleness, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.initialVelocityX, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.initialVelocityY, kOutputGeom)
+    SoftbodyDeformerNode.attributeAffects(SoftbodyDeformerNode.initialVelocityZ, kOutputGeom)
 #END
 
 def initializePlugin( mobject ):
@@ -246,19 +300,24 @@ def uninitializePlugin( mobject ):
 # Copy the following lines and run them in Maya's Python Script Editor:
 
 import maya.cmds as cmds
-cmds.loadPlugin( 'H:\TNCG13-SoftbodyDeformer\softbodyDeformer.py' )
+cmds.loadPlugin( 'X:\TNCG13-SoftbodyDeformer\softbodyDeformer.py' )
 cmds.polyCube()
-cmds.move(0, 1, 0)
+cmds.move(0, 10, 0)
 cmds.deformer( type='softbodyDeformer' )
+cmds.connectAttr( 'time1.outTime', 'softbodyDeformer1.time' )
+'''
 
+'''
 # OBS! To avoid Maya crash when reloading plugin:
 # Delete any created objects connected with the deformer and 
 # run the following MEL command: 
 
 file -new
+'''
 
+'''
 # To run from MEL instead of Python
-loadPlugin("H:/TNCG13-SoftbodyDeformer/softbodyDeformer.py");
+loadPlugin("X:/TNCG13-SoftbodyDeformer/softbodyDeformer.py");
 
 // Create a plane
 polyPlane -n myPlane -sx 1 -sy 1 -h 10 -w 10;

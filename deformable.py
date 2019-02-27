@@ -9,6 +9,7 @@ Ctrl-K Ctrl-U = un-comments every line
 import maya.OpenMaya as OpenMaya
 import numpy as np
 import scipy as sp
+import copy
 from scipy import linalg
 
 def convertMayaToNumpyArray(inPositions):
@@ -22,21 +23,22 @@ def convertMayaToNumpyArray(inPositions):
     return outPositions
 #END
 
-MASS = 0.1 # All positions have the same mass
 GRAVITY = -9.82
 
 class Deformable:
     # Initialize variables for the deformable
     # Stiffness, forces, etc.
-    stiffness = 1.0 #0.5
 
-    def __init__(self, positions = OpenMaya.MPointArray(), velocities = OpenMaya.MPointArray()):
+    def __init__(self, positions = OpenMaya.MPointArray(), velocities = OpenMaya.MPointArray(), mass = 0.1):
         self.dt = 0.01              # time step for physics computations
 
         # Attributes to be set by user
+        self.mass = mass
         self.elasticity = 0.5       # elasticity coefficient for collisions
         self.friction = 0.5
         self.beta = 0.5
+        self.stiffness = 0.5
+        self.jiggleness = 0.5
 
         self.pos_x0 = positions		# rest position (MPoint)
         self.pos_x  = positions 	# current positions (MPoint)
@@ -53,8 +55,6 @@ class Deformable:
 
     ''' Precomputation of variables based on rest poisitions. Needed for deformation '''
     def precomputeDeformVariables(self):
-        global MASS
-
         # Compute things related to rest positions needed for shape matching
         self.X0 = convertMayaToNumpyArray(self.pos_x0)
         self.X0_cm = np.sum(self.X0, axis=0) / self.X0.shape[0]
@@ -70,7 +70,7 @@ class Deformable:
         for i in range(self.q.shape[0]):
             # Compute Aqq
             qi = np.array([self.q[i],]) # make sure that we have matrices and not 1D-arrays
-            self.Aqq = self.Aqq + MASS * np.dot(qi.T, qi) # matrix multiplication
+            self.Aqq = self.Aqq + self.mass * np.dot(qi.T, qi) # matrix multiplication
 
             # Compute AqqTilde and updated relative positions qTilde (used for quadratic deformation)
             qx = self.q[i][0]
@@ -79,12 +79,16 @@ class Deformable:
             self.qTilde[i] = np.array([qx, qy, qz, qx*qx, qy*qy, qz*qz, qx*qy, qy*qz, qz*qx])
 
             qiTilde = np.array([self.qTilde[i],])
-            self.AqqTilde = self.AqqTilde + MASS * np.dot(qiTilde.T, qiTilde) # matrix multiplication
+            self.AqqTilde = self.AqqTilde + self.mass * np.dot(qiTilde.T, qiTilde) # matrix multiplication
         # END FOR
 
         # Inverse deformation matrices
         self.Aqq = np.linalg.pinv(self.Aqq)
         self.AqqTilde = np.linalg.pinv(self.AqqTilde)   # pinv to avoid floating points errors
+    #END
+
+    def setParticleMass(self, mass):
+        self.mass = mass
     #END
 
     def setCollisionElasticity(self, elasticity):
@@ -99,12 +103,22 @@ class Deformable:
         self.beta = beta
     #END
 
+    def setStiffness(self, stiffness):
+        self.stiffness = stiffness
+    #END
+
+    def setJiggleness(self, jiggleness):
+        self.jiggleness = jiggleness
+    #END
+
     def setTimeStep(self, timeStep):
         self.dt = timeStep
     #END
 
     def getPositions(self):
-        return self.pos_x
+        temp = OpenMaya.MPointArray() 
+        temp.copy(self.pos_x)
+        return temp
     #END
 
     ''' 
@@ -124,7 +138,7 @@ class Deformable:
     ''' Apply a force to each position in x '''
     def applyForces(self):
         # Access global variables
-        global GRAVITY, MASS
+        global GRAVITY
         nrPos = self.pos_x.length()
 
         # TODO: Make sure that forces works correctly. (DET BALLAR UR!!)
@@ -135,7 +149,7 @@ class Deformable:
 
             # Compute external forces
             # gravity
-            f = GRAVITY * MASS
+            f = GRAVITY * self.mass
             F = np.array([0.0, f, 0.0]) # F = [0, -0.982, 0]
 
             # Impulse and friction for collision with ground
@@ -150,8 +164,8 @@ class Deformable:
                 vDiff_orth = vDiff - vDiff_par 
 
                 # Compute impulse and friction
-                collisionImpulse = -(self.elasticity + 1) * vDiff_par * MASS
-                friction = -self.friction * vDiff_orth * MASS
+                collisionImpulse = -(self.elasticity + 1) * vDiff_par * self.mass
+                friction = -self.friction * vDiff_orth * self.mass
 
                 F = F + (collisionImpulse + friction) / self.dt
                 # Move object above ground level
@@ -159,7 +173,7 @@ class Deformable:
             #END IF
 
             # Update velocities
-            self.v[i] = self.v[i] + (F / MASS) * self.dt
+            self.v[i] = self.v[i] + (F / self.mass) * self.dt
 
             # Update positions
             newX = pos.x + self.v[i, 0] * self.dt
@@ -173,9 +187,8 @@ class Deformable:
         #END FOR
     #END
 
+    ''' Deform object using shape matching '''
     def deform(self):
-        # Deform object using shape matching
-        global MASS
 
         # Precomputed variables
         X0 = self.X0
@@ -201,7 +214,7 @@ class Deformable:
             # Make sure that we have matrices and not 1D-arrays
             pi = np.array([p[i],])
             qi = np.array([q[i],])
-            Apq = Apq + MASS * np.dot(pi.T, qi) # matrix multiplication
+            Apq = Apq + self.mass * np.dot(pi.T, qi) # matrix multiplication
         # END FOR
 
         # Find rotational part in Apq using singular value decomposition (SVD)
@@ -235,12 +248,16 @@ class Deformable:
             # make sure that we have matrices and not 1D-arrays
             pi = np.array([p[i],])
             qi = np.array([qTilde[i],])
-            ApqTilde = ApqTilde + MASS * np.dot(pi.T, qi) # Matrix multiplication
+            ApqTilde = ApqTilde + self.mass * np.dot(pi.T, qi) # Matrix multiplication
         # END FOR
 
         ATilde = np.dot(ApqTilde, AqqTilde)
 
-        # TODO: Preserve volume for linear part of ATilde
+        # TODO: Preserve volume for linear part of ATilde (current code might not work correctly)
+        ATilde_lin = ATilde[:, 0:3]
+        determinant = linalg.det(ATilde_lin) if linalg.det(ATilde_lin) > 0.001 else 0.001
+        ATilde_lin = ATilde_lin / pow(determinant, 1/3)
+        ATilde[:, 0:3] = ATilde_lin
 
         # Compute RTilde = [R 0 0]
         zero = np.zeros((3, 6))
@@ -253,8 +270,8 @@ class Deformable:
         # INTEGRATION
         # Update current velocities and current position
         for i in range(self.pos_x.length()):
-            self.v[i] = self.v[i] + Deformable.stiffness * ((goalPositions[i] - X[i])/self.dt)
-            X[i] = X[i] + self.dt * Deformable.stiffness * ((goalPositions[i] - X[i])/self.dt)# self.v[i]
+            self.v[i] = self.v[i] + self.jiggleness * self.stiffness * ((goalPositions[i] - X[i])/self.dt)
+            X[i] = X[i] + self.dt * self.stiffness * ((goalPositions[i] - X[i])/self.dt)# self.v[i]
 
             # Convert positions back to MPoint
             self.pos_x.set(i, X[i, 0], X[i, 1], X[i, 2])
